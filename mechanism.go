@@ -2,6 +2,7 @@ package spf
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -132,7 +133,7 @@ func (m *Mechanism) Valid() bool {
 // If the IP is covered, the mechanism result is returned and error is nil.
 // If the IP is not covered an error is returned. The caller must check for
 // the error to determine if the result is valid.
-func (m *Mechanism) Evaluate(ip string, count int) (Result, error) {
+func (m *Mechanism) Evaluate(ctx context.Context, ip string, count int) (Result, error) {
 
 	parsedIP := net.ParseIP(ip)
 
@@ -145,7 +146,7 @@ func (m *Mechanism) Evaluate(ip string, count int) (Result, error) {
 			return m.Result, nil
 		}
 	case "redirect":
-		spf, err := NewSPF(m.Domain, "", count)
+		spf, err := NewSPF(ctx, m.Domain, "", count)
 
 		// There is no clear definition of what to do with errors on a
 		// redirected domain. Trying to make wise choices here.
@@ -156,9 +157,9 @@ func (m *Mechanism) Evaluate(ip string, count int) (Result, error) {
 			return PermError, nil
 		}
 
-		return spf.Test(ip), nil
+		return spf.Test(ctx, ip), nil
 	case "include":
-		spf, err := NewSPF(m.Domain, "", count)
+		spf, err := NewSPF(ctx, m.Domain, "", count)
 
 		// If there is no SPF record for the included domain or if we have too
 		// many mechanisms that require DNS lookups it is considered a
@@ -170,22 +171,22 @@ func (m *Mechanism) Evaluate(ip string, count int) (Result, error) {
 		// The include statment is meant to be used as an if-pass or on-pass
 		// statement. Meaning if we get a result other than Pass or PermError,
 		// it is ok to ignore it and move on to the other mechanisms.
-		result := spf.Test(ip)
+		result := spf.Test(ctx, ip)
 		if result == Pass || result == PermError {
 			return result, nil
 		}
 	case "a":
-		networks := aNetworks(m)
+		networks := aNetworks(ctx, m)
 		if ipInNetworks(parsedIP, networks) {
 			return m.Result, nil
 		}
 	case "mx":
-		networks := mxNetworks(m)
+		networks := mxNetworks(ctx, m)
 		if ipInNetworks(parsedIP, networks) {
 			return m.Result, nil
 		}
 	case "ptr":
-		if testPTR(m, ip) {
+		if testPTR(ctx, m, ip) {
 			return m.Result, nil
 		}
 	default:

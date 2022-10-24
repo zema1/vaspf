@@ -6,6 +6,7 @@ package spf
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -39,9 +40,9 @@ type SPF struct {
 // Mechanisms are evaluated in order until one of them provides a valid
 // result. If no valid results are provided, the default result of "Neutral"
 // is returned.
-func (s *SPF) Test(ip string) Result {
+func (s *SPF) Test(ctx context.Context, ip string) Result {
 	for _, m := range s.Mechanisms {
-		result, err := m.Evaluate(ip, s.Count)
+		result, err := m.Evaluate(ctx, ip, s.Count)
 		if err == nil {
 			return result
 		}
@@ -79,11 +80,13 @@ func (s *SPF) SPFString() string {
 	return buf.String()
 }
 
-func getSPFRecord(domain string) (string, error) {
+// GetSPFRecord fetches spf record from dns record of the domain
+func GetSPFRecord(ctx context.Context, domain string) (string, error) {
 	var spfText string
 
 	// DNS errors during domain name lookup should result in "TempError".
-	records, err := net.LookupTXT(domain)
+	resolver := &net.Resolver{}
+	records, err := resolver.LookupTXT(ctx, domain)
 	if err != nil {
 		return "", ErrFailedLookup
 	}
@@ -101,11 +104,11 @@ func getSPFRecord(domain string) (string, error) {
 
 // Create a new SPF record for the given domain using the provided string. If
 // the provided string is not valid an error is returned.
-func NewSPF(domain, record string, count int) (SPF, error) {
+func NewSPF(ctx context.Context, domain, record string, count int) (SPF, error) {
 	var spf SPF
 
 	if record == "" {
-		spfText, err := getSPFRecord(domain)
+		spfText, err := GetSPFRecord(ctx, domain)
 		if err != nil {
 			return spf, err
 		}
@@ -171,7 +174,7 @@ Exported functions.
 //
 // SPFTest will return one of the following results:
 // Pass, Fail, SoftFail, Neutral, None, TempError, or PermError
-func SPFTest(ip, email string) (Result, error) {
+func SPFTest(ctx context.Context, ip, email string) (Result, error) {
 	var domain string
 
 	// Get domain name from email address.
@@ -182,7 +185,7 @@ func SPFTest(ip, email string) (Result, error) {
 		return None, errors.New("Email address must contain an @ sign.")
 	}
 
-	spfText, err := getSPFRecord(domain)
+	spfText, err := GetSPFRecord(ctx, domain)
 	if err != nil {
 		return TempError, err
 	}
@@ -193,10 +196,10 @@ func SPFTest(ip, email string) (Result, error) {
 	}
 
 	// Create a new SPF struct
-	spf, err := NewSPF(domain, spfText, 0)
+	spf, err := NewSPF(ctx, domain, spfText, 0)
 	if err != nil {
 		return PermError, err
 	}
 
-	return spf.Test(ip), nil
+	return spf.Test(ctx, ip), nil
 }

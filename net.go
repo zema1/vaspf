@@ -1,6 +1,7 @@
 package spf
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -46,16 +47,18 @@ func buildNetworks(ips []string, prefix string) []*net.IPNet {
 	return networks
 }
 
-func aNetworks(m *Mechanism) []*net.IPNet {
-	ips, _ := net.LookupHost(m.Domain)
+func aNetworks(ctx context.Context, m *Mechanism) []*net.IPNet {
+	resolver := &net.Resolver{}
+	ips, _ := resolver.LookupHost(ctx, m.Domain)
 
 	return buildNetworks(ips, m.Prefix)
 }
 
-func mxNetworks(m *Mechanism) []*net.IPNet {
+func mxNetworks(ctx context.Context, m *Mechanism) []*net.IPNet {
 	var networks []*net.IPNet
+	resolver := &net.Resolver{}
 
-	mxs, _ := net.LookupMX(m.Domain)
+	mxs, _ := resolver.LookupMX(ctx, m.Domain)
 
 	for _, mx := range mxs {
 		ips, _ := net.LookupHost(mx.Host)
@@ -65,8 +68,9 @@ func mxNetworks(m *Mechanism) []*net.IPNet {
 	return networks
 }
 
-func testPTR(m *Mechanism, ip string) bool {
-	names, err := net.LookupAddr(ip)
+func testPTR(ctx context.Context, m *Mechanism, ip string) bool {
+	resolver := &net.Resolver{}
+	names, err := resolver.LookupAddr(ctx, ip)
 
 	if err != nil {
 		return false
